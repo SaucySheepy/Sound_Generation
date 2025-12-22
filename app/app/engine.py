@@ -23,6 +23,27 @@ def note_to_freq(note:str)-> float:
     frequency = 440.0 * (2.0 ** ((n - 69) / 12.0))
     return frequency
 
+class StiffnessDispersion:
+    def __init__(self, stiffness:float=-0.7):
+        self.a = stiffness
+        # Cascade of 4 All-Pass Filters
+        # We need independent memory for each stage
+        self.x_prev = [0.0] * 4
+        self.y_prev = [0.0] * 4 
+
+    def process_sample(self, input_val:float) ->float:
+        current_input = input_val
+        for i in range(4):
+            output = (self.a * current_input) + self.x_prev[i] - (self.a * self.y_prev[i])
+            # Update history for this stage
+            self.x_prev[i] = current_input
+            self.y_prev[i] = output
+
+            # The output of this stage becomes the input for the next 
+            current_input = output
+        return current_input
+
+
 class KarplusStrongAlgorithm(IPhysicsStrategy):
     def __init__(self, sample_rate :int = 44100, frequency:float=440.0, decay_factor:float=0.99) -> None:
         self.sample_rate = sample_rate
@@ -35,11 +56,32 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
         self.ap_x_prev = 0.0
         self.ap_y_prev = 0.0
         self.C = 0.0
+        self.stiffness = StiffnessDispersion(stiffness=-0.7)
         self.set_frequency(frequency)
 
     def set_frequency(self, freq:float, sustain_time: float=4.0):
         self.frequency = freq
-        N_total = self.sample_rate /freq
+
+        if freq < 600.0:
+            ratio = 1.0 - (freq/600.0)
+            current_stiffness = -0.7*ratio
+        else:
+            current_stiffness = 0.0
+
+        self.stiffness.a = current_stiffness
+
+        # --Delay Compensation--
+        # We must subtract the filter's group delay from the string length
+        # Formula: Delay = 4 Stages * (1-a)/(1+a)
+        s = current_stiffness
+        if s!=0.0:
+            stiffness_delay = 4.0 * (1.0-s)/(1.0+s)
+        else:
+            stiffness_delay = 0.0
+        
+        N_total = (self.sample_rate /freq) +0.52 - stiffness_delay
+        if N_total<2:
+            N_total =2
         self.N = int(N_total)
 
         alpha = N_total - self.N
@@ -97,11 +139,13 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
             current_val = local_delay[local_ptr]
             output[i] = current_val
 
-            prev_ptr = local_ptr-1
-            if prev_ptr < 0 : prev_ptr = local_N -1
-            lowpassed_val = (0.48*current_val + 0.52*local_delay[prev_ptr])*self.decay_factor
+            next_ptr = (local_ptr +1) % local_N
+            next_val = local_delay[next_ptr]
+            lowpassed_val = (0.48* current_val +0.52*next_val) * self.decay_factor
+            # ---Dispersion stiffness 
+            stiff_val = self.stiffness.process_sample(lowpassed_val)
 
-            x_n = lowpassed_val
+            x_n = stiff_val
             y_n = (self.C * x_n) + self.ap_x_prev - (self.C * self.ap_y_prev)
 
             # Update Filter History
@@ -109,7 +153,7 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
             self.ap_y_prev = y_n
 
             local_delay[local_ptr] = y_n
-            local_ptr = (local_ptr +1) % local_N
+            local_ptr = next_ptr
         
         self.ptr = local_ptr
         return output
@@ -118,7 +162,7 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
 class GuitarBody():
     def __init__(self, sample_rate : int = 44100, resonance_freq:float =100.0):
         self.sample_rate = sample_rate
-        cutoff_hz = 2000
+        cutoff_hz = 3000
         nyquist = 0.5 * sample_rate
         normal_cutoff = cutoff_hz/nyquist
         
@@ -149,7 +193,7 @@ class GuitarBody():
         boom, self.bp_zf = lfilter(self.bp_b, self.bp_a, signal, zi=self.bp_zi)
         self.bp_zi = self.bp_zf
 
-        return filtered_signal + (boom *2.0)
+        return filtered_signal + (boom *20.0)
 
 class Instrument:
     def __init__(self, name:str, strategy: IPhysicsStrategy):

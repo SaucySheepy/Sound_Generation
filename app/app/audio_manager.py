@@ -85,6 +85,14 @@ class AudioManager:
         if self.initialized:
             self.model.resonance_enabled = enabled
 
+    def set_stiffness(self, stiffness_val:float):
+        if self.initialized:
+            print(f"Setting stiffness to {stiffness_val}")
+            for string in self.model.strings:
+                if hasattr(string, 'stiffness'):
+                    string.stiffness.a = stiffness_val
+                string.set_frequency(string.frequency, sustain_time = self.current_sustain)
+
 
 audio_manager = AudioManager()
         
