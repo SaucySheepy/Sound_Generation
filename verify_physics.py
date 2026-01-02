@@ -1,7 +1,9 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 from scipy.signal import welch
-from app.app.engine import KarplusStrongAlgorithm, AcousticGuitar
+from app.app.physics.karplus_strong import KarplusStrongAlgorithm
+from app.app.physics.dwg import DigitalWaveguideStrategy
+from app.app.instruments.acoustic_guitar import AcousticGuitar
 
 class PhysicsLab:
     def __init__(self, target_freq=82.41, target_sustain=4.0):
@@ -45,10 +47,11 @@ class PhysicsLab:
         ''' Measures frequency accuracy(Fundamental vs Target)'''
         search_range = (self.freqs> self.target_freq -100) & (self.freqs<self.target_freq+100)
         peak_idx = np.argmax(self.psd[search_range])
-        measured_freq = self.freqs[search_range][peak_idx]
+        global_idx = np.where(search_range)[0][peak_idx]
+        measured_freq = self._interpolate_peak(self.psd, global_idx, self.freqs)
 
         error = 1200*np.log2(measured_freq / self.target_freq)
-        print(f"[TUNING] Error : {error:.2f} cents ({measured_freq:.1f}Hz)")
+        print(f"[TUNING] Error : {error:.2f} cents ({measured_freq:.2f}Hz)")
         return error
 
     def test_sustain(self):

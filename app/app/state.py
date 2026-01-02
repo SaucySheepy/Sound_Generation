@@ -1,6 +1,6 @@
 import reflex as rx
 from .audio_manager import audio_manager
-from .engine import note_to_freq
+from .physics.core import note_to_freq
 
 class State(rx.State):
     """The app state."""
@@ -12,6 +12,11 @@ class State(rx.State):
     stiffness: float = -0.7
     resonance: float = 100.0
     
+    last_target_freq:float = 0.0
+    last_generated_freq: float = 0.0
+
+    synthesis_mode = "Digital Waveguide"
+
     def on_load(self):
         print("App started, initializing audio")
         audio_manager.initialize()
@@ -30,6 +35,10 @@ class State(rx.State):
         audio_manager.set_stiffness(self.stiffness)
         print(f"Stiffness updated to {self.stiffness}")
 
+    def update_synthesis_mode(self, mode:str):
+        self.synthesis_mode = mode
+        audio_manager.set_synthesis_mode(mode)
+
     def play_chord(self, chord_name: str):
         chords = {
             "E Major": ["E2", "B2", "E3", "G#3", "B3", "E4"],
@@ -45,12 +54,14 @@ class State(rx.State):
 
     def play_note(self, note_name: str):
         freq = note_to_freq(note_name)
+        self.last_target_freq = freq
         audio_manager.strum([freq])
+        self.last_generated_freq = audio_manager.get_effective_frequency()
 
     def play_song(self):
         def _song_thread():
             import time
-            from .engine import note_to_freq
+            from .physics.core import note_to_freq
             
             chords = {
                 "Am_low": ["A2", "E3"],

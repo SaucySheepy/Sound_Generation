@@ -1,6 +1,6 @@
 import sounddevice as sd
 import numpy as np 
-from .engine import AcousticGuitar
+from .instruments.acoustic_guitar import AcousticGuitar
 import threading
 
 class AudioManager:
@@ -68,6 +68,10 @@ class AudioManager:
         if self.initialized:
             threading.Thread(target=self._perform_strum, args=(note_freqs,duration, direction), daemon=True).start()           
 
+    def set_synthesis_mode(self, mode:str):
+        if self.initialized:
+            self.model.set_synthesis_strategy(mode)
+
     def set_frequency(self, freq):
         if self.initialized:
             self.current_freq = freq
@@ -93,6 +97,10 @@ class AudioManager:
                     string.stiffness.a = stiffness_val
                 string.set_frequency(string.frequency, sustain_time = self.current_sustain)
 
+    def get_effective_frequency(self) -> float:
+        if self.initialized:
+            return self.model.get_effective_frequency()
+        return 0.0
 
 audio_manager = AudioManager()
         

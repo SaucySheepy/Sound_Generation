@@ -1,6 +1,6 @@
 import sounddevice as sd
 import numpy as np 
-from app.app.engine import StringModel
+from app.app.physics.core import StringModel
 
 def main() -> None:
     fs = 44100

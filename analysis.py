@@ -1,7 +1,7 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 from scipy.signal import freqz
-from app.app.engine import GuitarBody, AcousticGuitar
+from app.app.physics.engine import GuitarBody, AcousticGuitar
 
 def analyze_body_resonance():
     print("Anaylyze: Guitar Body Impluse Response")

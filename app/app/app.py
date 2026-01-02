@@ -26,6 +26,21 @@ def physics_controls() -> rx.Component:
     return rx.vstack(
         rx.heading("Luthier's Workbench", size="4", color=styles.colors["accent"]),
         rx.divider(margin_y="10px"),
+                rx.heading("Frequency Monitor", size="2", color = styles.colors["accent"]),
+        rx.hstack(
+            rx.vstack(
+                rx.text("Target", size = '1', color = styles.colors["muted"]),
+                rx.text(f"{State.last_target_freq:.2f} Hz", size ="3", weight="bold"), align_items="start",
+                
+            ),
+            rx.spacer(),
+            rx.vstack(
+                rx.text("Generated", size="1", color=styles.colors["muted"]),
+                rx.text(f"{State.last_generated_freq:.2f} Hz", size = "3", weight="bold"),
+                align_items="end",
+            ),
+            width="100%",
+        ),
         
         rx.text(f"Decay Factor: {State.sustain}", size="1"),
         rx.slider(
@@ -43,8 +58,19 @@ def physics_controls() -> rx.Component:
             style=styles.slider_style
         ),
         
+        rx.text("Synthesis Engine", size = "1"),
+        rx.select(
+            ["Digital Waveguide", "Karplus Strong"],
+            value = State.synthesis_mode,
+            on_change=State.update_synthesis_mode,
+            width="100%",
+            variant="soft", 
+        ),
+        rx.divider(margin_y="10px"),
         style=styles.card_style,
-        width="100%"
+        width="100%",
+
+
     )
 
 def index() -> rx.Component:
@@ -69,7 +95,7 @@ def index() -> rx.Component:
                     
                     rx.box(
                         rx.heading("Sequencer", size="5", margin_bottom="10px"),
-                        rx.button("Play 'Canon in D'", on_click=State.play_song, color_scheme="green", width="100%", size="3"),
+                        rx.button("Play 'Hurt'", on_click=State.play_song, color_scheme="green", width="100%", size="3"),
                         
                         rx.heading("Chords", size="5", margin_top="20px", margin_bottom="10px"),
                         rx.grid(
@@ -81,6 +107,48 @@ def index() -> rx.Component:
                             columns="3",
                             spacing="3",
                             width="100%"
+                        ),
+                        rx.heading("Notes", size ="5", margin_top="30px", margin_bottom="15px"),
+                        rx.vstack(
+                            rx.hstack(
+                                rx.box(width="30px"),
+                                rx.grid(
+                                    *[rx.text(n,size="1",weight="bold",align="center")for n in ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]],
+                                    columns="12",
+                                    spacing="1",
+                                    flex="1",
+                                ),
+                                width = "100%",
+                                align = "center",
+                                margin_bottom = "5px"
+                            ),
+                            *[
+                                rx.hstack(
+                                    rx.text(f"O{octave}", size="1", width="30px", weight="bold"),
+                                    rx.grid(
+                                        *[
+                                            rx.button(
+                                                '',
+                                                on_click=lambda _,note = note, octave=octave: State.play_note(f"{note}{octave}"),
+                                                variant="soft",
+                                                size="1",
+                                                width="100%",
+                                                height="20px",
+                                                border_radius="2px"
+                                            )
+                                            for note in ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                                        ],
+                                        columns="12",
+                                        spacing="1",
+                                        flex="1"
+                                    ),
+                                    width = "100%",
+                                    align="center"
+                                )
+                                for octave in range(2,7)
+                            ],
+                            width ="100%",
+                            spacing = "1"
                         ),
                         flex="1"
                     ),
