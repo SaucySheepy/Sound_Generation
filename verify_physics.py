@@ -4,12 +4,17 @@ from scipy.signal import welch
 from app.app.physics.karplus_strong import KarplusStrongAlgorithm
 from app.app.physics.dwg import DigitalWaveguideStrategy
 from app.app.instruments.acoustic_guitar import AcousticGuitar
+from audio_comparator import AudioComparator
 
 class PhysicsLab:
-    def __init__(self, target_freq=82.41, target_sustain=4.0):
+    def __init__(self, target_freq=82.41, target_sustain=4.0, reference_file = None):
         self.fs = 44100
         self.target_freq = target_freq
         self.target_sustain = target_sustain
+
+        self.comparator = AudioComparator(sample_rate = self.fs)
+        if reference_file:
+            self.comparator.load_reference(reference_file)
         
         # 1. Generate the instrument and data
         print (f"--- Physical Modeling Lab: {target_freq}Hz ---")
@@ -147,7 +152,7 @@ class PhysicsLab:
             return 0.0
     
 if __name__ == "__main__":
-    lab = PhysicsLab(target_freq=82.41, target_sustain=4.0)
+    lab = PhysicsLab(target_freq=586.66, target_sustain=6.0,reference_file = "test_files\\d.wav")
     lab.test_tuning()
     lab.test_sustain()
     lab.test_stereo_width()
@@ -156,4 +161,5 @@ if __name__ == "__main__":
     lab.plot_spectrogram()
     lab.test_inharmonicity()
 
-    
+    if lab.comparator.ref_audio is not None:
+        lab.comparator.plot_comparison(lab.freqs, lab.psd, target_label="Generated Model")

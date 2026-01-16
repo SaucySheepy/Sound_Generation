@@ -1,3 +1,4 @@
+from alembic.command import current
 from typing import override
 from .core import IPhysicsStrategy, InstrumentConfig
 from .utils import FractionalDelay, LowPassFilter, StiffnessDispersion
@@ -16,9 +17,8 @@ import numpy as np
 # Decay factor
 
 class DigitalWaveguideStrategy(IPhysicsStrategy):
-    def __init__(self, sample_rate = 44100, frequency:float = 440.0, stiffness:float = -0.7, config :InstrumentConfig = InstrumentConfig()):
+    def __init__(self, sample_rate = 44100, frequency:float = 440.0, config :InstrumentConfig = InstrumentConfig()):
         self.sample_rate = sample_rate
-        self.stiffness = stiffness
         self.config = config
         self.decay_factor = config.string_damping
 
@@ -35,7 +35,7 @@ class DigitalWaveguideStrategy(IPhysicsStrategy):
 
         #Initialize our utility objects
         self.fractional_delay = FractionalDelay()
-        self.damping_filter = LowPassFilter(alpha=0.4)
+        self.damping_filter = LowPassFilter(alpha=0.2)
         self.stiffness = StiffnessDispersion(stiffness = config.stiffness)
 
         self.pickup_locations = {
@@ -53,6 +53,15 @@ class DigitalWaveguideStrategy(IPhysicsStrategy):
         self.frequency = frequency
         self.current_damping = 10**(-3/(frequency*sustain_time))
 
+        if frequency > 600.0:
+            new_alpha = 0.08
+        elif frequency < 300.0:
+            new_alpha = 0.2
+        else:
+            ratio = (frequency - 300.0) / 300.0
+            new_alpha = 0.2 - (0.12*ratio)
+        self.damping_filter.set_alpha(new_alpha)
+         
         ideal_N = (self.sample_rate/frequency)/2.0
         stiffness_delay = self.stiffness.update_stiffness(self.config.stiffness, ideal_N*0.7-1.0)
         fixed_delays = 1.0+stiffness_delay
@@ -76,15 +85,39 @@ class DigitalWaveguideStrategy(IPhysicsStrategy):
         return self.right_buffer[idx]+self.left_buffer[idx]
 
     def excite(self, velocity:float, pluck_position:float = 0.2):
+        self.right_buffer = [0.0] * self.max_size
+        self.left_buffer = [0.0] * self.max_size
+        
+        # Reset Utility States
+        self.fractional_delay.reset()
+        self.damping_filter.reset()
+        self.stiffness.reset()
+
         pluck_pos = max(1, min(int(self.buffer_size * pluck_position), self.buffer_size - 1))
+        
+        # [NEW] Smoothed Pluck Top (Simulates finger width)
+        width = max(2, self.config.pluck_width)
+        
         for i in range(self.buffer_size):
             current_point = (self.ptr + i)%self.buffer_size
-            if i<= pluck_pos :
-                self.right_buffer[current_point] +=0.5 * velocity * i/pluck_pos 
-                self.left_buffer[current_point] +=0.5 * velocity * i/pluck_pos 
+            
+            # 1. Calculate Ideal Sharp Triangle
+            if i <= pluck_pos:
+                val = 0.5 * velocity * (i / pluck_pos)
             else:
-                self.right_buffer[current_point] +=0.5* velocity * (self.buffer_size-i)/(self.buffer_size-pluck_pos)
-                self.left_buffer[current_point] +=0.5* velocity * (self.buffer_size-i)/(self.buffer_size-pluck_pos)
+                val = 0.5 * velocity * ((self.buffer_size - i) / (self.buffer_size - pluck_pos))
+            
+            # 2. Smooth the tip using a simple polynomial window
+            # If we are within 'width' of the pluck position, round it off
+            dist = abs(i - pluck_pos)
+            if dist < width:
+                # Quadratic smoothing: val * (1 - (dist/width)^2 * scaling)
+                # This makes the sharp point a parabola
+                correction = (dist / width) ** 2
+                val = val * (1.0 - 0.2 * (1.0 - correction)) 
+
+            self.right_buffer[current_point] = val
+            self.left_buffer[current_point] = val
 
     # Alpha is used for filtering. We'll take alpha*prev sample and average it with (1-a)*current sample
     # Alpha 0.05-0.1 is good for metal strings
@@ -99,47 +132,50 @@ class DigitalWaveguideStrategy(IPhysicsStrategy):
         buff_size = self.buffer_size
 
         use_bridge = self.config.use_bridge_output
-        selector_key = "all"
+
+        chunk_size = 64
+        output = np.zeros(num_samples)
         pickup_offsets=[]
 
         if not use_bridge:
-            ratios=self.pickup_locations.get(selector_key,[0.2])
+            ratios=self.pickup_locations.get("all",[0.2])
             for r in ratios :
                 offset = int(buff_size *r)
                 pickup_offsets.append(offset)
-            num_pickups = len(pickup_offsets)
+        num_pickups = max(1,len(pickup_offsets))
 
-        output = [0.0]*num_samples
+        processed = 0
+        while processed < num_samples:
+            current_chunk = min(chunk_size, num_samples - processed)
+            indices = (np.arange(current_chunk) + self.ptr) % buff_size
+            val_bridge = np.array([wd_right[i] for i in indices])
+            val_nut = np.array([wd_left[i] for i in indices])
 
-        for i in range(num_samples):
-            val_bridge = wd_right[ptr]
-            val_nut = wd_left[ptr]
+            filtered_bridge = self.damping_filter.process_vector(val_bridge)
+            stiff_bridge = self.stiffness.process_vector(filtered_bridge)
 
-            filtered_bridge = self.damping_filter.process_sample(val_bridge)
-            stiff_bridge = self.stiffness.process_sample(filtered_bridge)
-            #prev_output = filtered_bridge
+            inv_nut = -1 * val_nut
+            nut_reflection = self.fractional_delay.process_vector(inv_nut, self.frac_c)
 
-            inv_nut = -1*val_nut
-            nut_reflection = self.fractional_delay.process_sample(inv_nut, self.frac_c)
-            #ap_x_prev =inv_nut
-            #ap_y_prev = nut_reflection
+            left_write = -stiff_bridge * self.current_damping
+            right_write = nut_reflection
 
-            wd_left[ptr] = -stiff_bridge * self.current_damping
-            wd_right[ptr] = nut_reflection
+            for k in range(current_chunk):
+                idx = indices[k]
+                wd_left[idx] = left_write[k]
+                wd_right[idx] = right_write[k]
 
-            if use_bridge:
-                output[i] = filtered_bridge
-            else:
-                total_sig = 0.0
-                for offset in pickup_offsets:
-                    idx = (ptr+offset)%buff_size
-                    total_sig += wd_right[idx] + wd_left[idx]
-                output[i] = total_sig/num_pickups
-
-            ptr = (ptr+1)%buff_size
-        
-        self.ptr = ptr
-        
+                if use_bridge:
+                    output[processed + k] = filtered_bridge[k]
+                else:
+                    s = 0.0
+                    for off in pickup_offsets:
+                        pidx = (idx+off)%buff_size
+                        s += wd_right[pidx] + wd_left[pidx]
+                    output[processed + k] = s/num_pickups
+            self.ptr = (self.ptr + current_chunk) % buff_size
+            processed += current_chunk
+            
         return output
 
     def get_effective_frequency(self) -> float: 

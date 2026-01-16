@@ -9,8 +9,19 @@ class AcousticGuitar(Instrument):
         # We now import components from the physics package!
         self.body_left = GuitarBody(sample_rate = 44100, resonance_freq=95.0)
         self.body_right = GuitarBody(sample_rate = 44100, resonance_freq=105.0)
+        self.tuning = "C Minor"
+        #Standard Tuning ["E2", "A2", "D3", "G3", "B3", "E4"]
+        #C Minor Tuning ["C2","G2","C3","G3","C4","F#4"]
+        match(self.tuning):
+            case "Standard":
+                tuning_notes = ["E2", "A2", "D3", "G3", "B3", "E4"]
+            case "C Minor":
+                tuning_notes = ["C2","G2","C3","G3","C4","F#4"]
+            case _:
+                print("Error with tuning")
+                return
         
-        tuning_notes = ["E2", "A2", "D3", "G3", "B3", "E4"]
+        
         self.body = GuitarBody(sample_rate=44100)
         self.strings = []
         self.last_string = None
@@ -82,8 +93,8 @@ class AcousticGuitar(Instrument):
         self.last_string = selected_strategy
         # Direct Body Kick
         kick = np.random.uniform(-0.1,0.1,100) * velocity
-        self.body_left.process(kick)
-        self.body_right.process(kick)
+        #self.body_left.process(kick)
+        #self.body_right.process(kick)
         
     def process_block(self, num_samples:int):
         raw_string_sound=np.zeros(num_samples)
@@ -96,7 +107,7 @@ class AcousticGuitar(Instrument):
         else:
             final_sound = np.vstack((raw_string_sound, raw_string_sound)).T
 
-        return final_sound*0.3
+        return final_sound*0.4
 
     def get_effective_frequency(self) -> float:
         """Returns the actual frequency of the last string played."""

@@ -21,6 +21,9 @@ class GuitarBody():
         self.bp_b, self.bp_a = butter(N=2, Wn = [(resonance_freq-20)/nyquist, (resonance_freq+20)/nyquist],btype = 'bandpass', analog =False)
         self.bp_zi = lfilter_zi(self.bp_b, self.bp_a)
 
+        #Simulating white noise
+        self.noise_gain = 0.0002
+        
 
 
     def process(self, signal: np.ndarray) -> np.ndarray:
@@ -35,4 +38,8 @@ class GuitarBody():
         boom, self.bp_zf = lfilter(self.bp_b, self.bp_a, signal, zi=self.bp_zi)
         self.bp_zi = self.bp_zf
 
-        return filtered_signal + (boom *20.0)
+        raw_output = filtered_signal + (boom*1.5)
+
+        noise = np.random.normal(0, self.noise_gain, size=signal.shape)
+        raw_output += noise
+        return np.tanh(raw_output)

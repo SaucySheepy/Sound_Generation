@@ -24,7 +24,7 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
         self.frequency = freq
 
         ideal_T = self.sample_rate/freq
-        stiffness_delay = self.stiffness.update_stiffness(self.config.stiffness, ideal_T*0.7-0.52)
+        stiffness_delay = 0
 
         total_T = ideal_T-0.52-stiffness_delay
         if total_T<2.1:
@@ -42,6 +42,10 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
             self.ptr =0
     
     def excite(self, velocity :float, cutoff_frequency:float=4000, pluck_position:float=0.2):
+        # Reset filter states to prevent instability
+        self.fractional_delay.reset()
+        self.stiffness.reset()
+        
         white = np.random.uniform(-1.0, 1.0, self.N)
 
         # Filter into pink noise (1/f approx)
@@ -83,9 +87,9 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
             next_val = local_delay[next_ptr]
             lowpassed_val = (0.48* current_val +0.52*next_val) * self.decay_factor
             # ---Dispersion stiffness 
-            stiff_val = self.stiffness.process_sample(lowpassed_val)
+            #stiff_val = self.stiffness.process_sample(lowpassed_val)
 
-            y_n = self.fractional_delay.process_sample(stiff_val, self.frac_c)
+            y_n = self.fractional_delay.process_sample(lowpassed_val, self.frac_c)
 
             local_delay[local_ptr] = y_n
             local_ptr = next_ptr
@@ -95,7 +99,7 @@ class KarplusStrongAlgorithm(IPhysicsStrategy):
 
     def get_effective_frequency(self) -> float:
         frac_delay = (1.00 - self.frac_c) / (1.0+self.frac_c)
-        stiffness_delay = self.stiffness.get_group_delay()
-
+        stiffness_delay = 0.0
+        
         total_period = self.N + frac_delay + stiffness_delay + 0.52
         return self.sample_rate / total_period

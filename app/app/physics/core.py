@@ -8,7 +8,7 @@ class InstrumentConfig:
     use_bridge_output: bool = False # True = Listen to force (Acoustic), False = Listen to displ (Electric)
     string_damping: float = 0.999 # Metal vs Nylon
     pluck_width: int = 10         # 10 = Sharp, 40 = Soft Finger
-    stiffness:float = -0.7  
+    stiffness:float = -0.2  
       
 class IPhysicsStrategy(ABC):
     @abstractmethod
